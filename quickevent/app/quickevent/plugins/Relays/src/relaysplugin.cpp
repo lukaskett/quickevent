@@ -1060,7 +1060,7 @@ QString RelaysPlugin::startListIofXml30()
 				(max_competitors > 0) ? QVariantMap{{"maxNumberOfCompetitors", max_competitors}} : QVariantMap{},
 				QVariantList{"Id", tt_classes_row.value(QStringLiteral("classes.id"))},
 				QVariantList{"Name", tt_classes_row.value(QStringLiteral("classes.name")) },
-				QVariantList{"Extensions", QVariantList{"qe:StartMode", "WaveStart"}},
+				QVariantList{"Extensions", QVariantList{"qe:StartMode", "StartList"}},
 			}
 		);
 		for(int j=0; j<tt_teams.rowCount(); j++) {

@@ -838,6 +838,7 @@ qf::core::utils::TreeTable RunsPlugin::stageResultsTable(int stage_id, const QSt
 	{
 		qf::core::sql::QueryBuilder qb;
 		qb.select2("classes", "id, name")
+			.select2("classdefs", "resultListMode")
 			.select2("courses", "id, length, climb")
 			.select("runnersFinished, runnersCount")
 			.from("classes")
@@ -1177,8 +1178,11 @@ QString RunsPlugin::resultsIofXml30Stage(int stage_id)
 	for(int i=0; i<tt1.rowCount(); i++) {
 		QVariantList class_result{"ClassResult"};
 		const qf::core::utils::TreeTableRow tt1_row = tt1.row(i);
+		const QString result_list_mode = tt1_row.value(QStringLiteral("classdefs.resultListMode")).toString();
 		class_result.insert(class_result.count(),
 			QVariantList{"Class",
+				result_list_mode.isEmpty() || result_list_mode == QLatin1String("Default")
+					? QVariantMap{} : QVariantMap{{"resultListMode", result_list_mode}},
 				QVariantList{"Id", tt1_row.value(QStringLiteral("classes.id"))},
 				QVariantList{"Name", tt1_row.value(QStringLiteral("classes.name")) },
 			}
@@ -1638,7 +1642,7 @@ qf::core::utils::TreeTable RunsPlugin::startListClassesTable(int stage_id, const
 
 	qfs::QueryBuilder qb;
 	qb.select2("classes", "id, name")
-		.select2("classdefs", "startTimeMin, lastStartTimeMin, startIntervalMin, vacantsBefore, vacantEvery, vacantsAfter, mapCount")
+		.select2("classdefs", "startTimeMin, lastStartTimeMin, startIntervalMin, vacantsBefore, vacantEvery, vacantsAfter, mapCount, startMode")
 		.select2("courses", "length, climb, id")
 		.from("classes")
 		.joinRestricted("classes.id", "classdefs.classId", "classdefs.stageId={{stage_id}}")
@@ -3153,13 +3157,15 @@ QString RunsPlugin::startListStageIofXml30(int stage_id, quickevent::gui::Report
 		qf::core::utils::TreeTable tt2 = tt1_row.table();
 		if (tt2.rowCount() == 0 && is_iof_race)
 			continue; // not save empty class
-		bool is_free_start = tt1_row.value(QStringLiteral("startIntervalMin")).toInt() == 0;
+		QString start_mode = tt1_row.value(QStringLiteral("startMode")).toString();
+		if (start_mode.isEmpty())
+			start_mode = QStringLiteral("StartList");
 		int max_competitors = tt1_row.value(QStringLiteral("mapCount")).toInt();
 		append_list(class_start, QVariantList{"Class",
 								(max_competitors > 0) ? QVariantMap{{"maxNumberOfCompetitors", max_competitors}} : QVariantMap{},
 								QVariantList{"Id", tt1_row.value(QStringLiteral("classes.id"))},
 								QVariantList{"Name", tt1_row.value(QStringLiteral("classes.name"))},
-								QVariantList{"Extensions", QVariantList{"qe:StartMode", is_free_start ? "FreeStart" : "StartList"}}});
+								QVariantList{"Extensions", QVariantList{"qe:StartMode", start_mode}}});
 		append_list(class_start, QVariantList{"Course", QVariantList{"Length", tt1_row.value(QStringLiteral("courses.length"))},
 								QVariantList{"Climb", tt1_row.value(QStringLiteral("courses.climb"))},
 								QVariantList{"NumberOfControls", tt1_row.value(QStringLiteral("courses.numberOfControls"))}});

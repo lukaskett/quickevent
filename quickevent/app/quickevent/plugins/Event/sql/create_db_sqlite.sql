@@ -93,6 +93,8 @@ CREATE TABLE classdefs (
 	drawLock boolean NOT NULL DEFAULT 0,
 	relayStartNumber integer,
 	relayLegCount integer,
+	startMode character varying NOT NULL DEFAULT 'StartList',
+	resultListMode character varying NOT NULL DEFAULT 'Default',
 	CONSTRAINT classdefs_foreign0 FOREIGN KEY (stageId) REFERENCES stages (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
 	CONSTRAINT classdefs_foreign1 FOREIGN KEY (classId) REFERENCES classes (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
 	CONSTRAINT classdefs_foreign2 FOREIGN KEY (courseId) REFERENCES courses (id) ON UPDATE RESTRICT ON DELETE RESTRICT
