@@ -831,7 +831,7 @@ qf::core::utils::TreeTable RunsPlugin::currentStageResultsTable(const QString &c
 	return stageResultsTable(stage_id, class_filter, max_competitors_in_class, exclude_disq, false, max_points);
 }
 
-qf::core::utils::TreeTable RunsPlugin::stageResultsTable(int stage_id, const QString &class_filter, int max_competitors_in_class, bool exclude_disq, bool add_laps, int max_points)
+qf::core::utils::TreeTable RunsPlugin::stageResultsTable(int stage_id, const QString &class_filter, int max_competitors_in_class, bool exclude_disq, bool add_laps, int max_points, bool apply_result_list_mode)
 {
 	qfLogFuncFrame();
 	qf::gui::model::SqlTableModel model;
@@ -951,6 +951,31 @@ qf::core::utils::TreeTable RunsPlugin::stageResultsTable(int stage_id, const QSt
 				tt2_row.setValue(QStringLiteral("points"), static_cast<int>(points));
 				tt2.setRow(i, tt2_row);
 			}
+		}
+		// IOF XML resultListMode: Unordered* modes sort by name, UnorderedNoTimes shows no places and times
+		const QString result_list_mode = apply_result_list_mode? tt_row.value("classdefs.resultListMode").toString(): QString();
+		const bool no_times = result_list_mode == QLatin1String("UnorderedNoTimes");
+		tt2.appendColumn("resultListMode", QMetaType(QMetaType::QString));
+		for(int j=0; j<tt2.rowCount(); j++) {
+			auto tt2_row = tt2.row(j);
+			tt2_row.setValue(QStringLiteral("resultListMode"), result_list_mode);
+			if(no_times) {
+				tt2_row.setValue(QStringLiteral("pos"), QString());
+				tt2_row.setValue(QStringLiteral("npos"), 0);
+				tt2_row.setValue(QStringLiteral("loss"), 0);
+				tt2_row.setValue(QStringLiteral("points"), 0);
+			}
+			tt2.setRow(j, tt2_row);
+		}
+		if(result_list_mode == QLatin1String("Unordered") || no_times) {
+			QList<qf::core::utils::TreeTableRow> rows;
+			for(int j=0; j<tt2.rowCount(); j++)
+				rows << tt2.row(j);
+			std::stable_sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
+				return QString::localeAwareCompare(a.value(QStringLiteral("competitorName")).toString(), b.value(QStringLiteral("competitorName")).toString()) < 0;
+			});
+			for(int j=0; j<rows.count(); j++)
+				tt2.setRow(j, rows[j]);
 		}
 		if(add_laps) {
 			int course_id = tt_row.value("courses.id").toInt();
@@ -1088,7 +1113,7 @@ QVariantMap RunsPlugin::editPrintAwardsOptionsInDialog(const QVariantMap &opts)
 
 QString RunsPlugin::resultsIofXml30Stage(int stage_id)
 {
-	qf::core::utils::TreeTable tt1 = stageResultsTable(stage_id, QString(), 0, false, true);
+	qf::core::utils::TreeTable tt1 = stageResultsTable(stage_id, QString(), 0, false, true, 0, /*apply_result_list_mode=*/false);
 	const auto &event_config = getPlugin<EventPlugin>()->eventConfig();
 	bool is_iof_race = event_config.iofRace;
 	int iof_xml_race_number = event_config.iofXmlRaceNumber;
@@ -1126,6 +1151,7 @@ QString RunsPlugin::resultsIofXml30Stage(int stage_id)
 		"ResultList",
 		QVariantMap{
 			{"xmlns", "http://www.orienteering.org/datastandard/3.0"},
+			{"xmlns:qe", "http://quickevent.cz/datastandard/extensions"},
 			{"status", "Complete"},
 			{"iofVersion", "3.0"},
 			{"creator", QStringLiteral("QuickEvent %1").arg(QCoreApplication::applicationVersion())},
@@ -1179,14 +1205,14 @@ QString RunsPlugin::resultsIofXml30Stage(int stage_id)
 		QVariantList class_result{"ClassResult"};
 		const qf::core::utils::TreeTableRow tt1_row = tt1.row(i);
 		const QString result_list_mode = tt1_row.value(QStringLiteral("classdefs.resultListMode")).toString();
-		class_result.insert(class_result.count(),
-			QVariantList{"Class",
-				result_list_mode.isEmpty() || result_list_mode == QLatin1String("Default")
-					? QVariantMap{} : QVariantMap{{"resultListMode", result_list_mode}},
-				QVariantList{"Id", tt1_row.value(QStringLiteral("classes.id"))},
-				QVariantList{"Name", tt1_row.value(QStringLiteral("classes.name")) },
-			}
-		);
+		QVariantList class_el{"Class",
+			QVariantMap{{"resultListMode", result_list_mode.isEmpty()? QStringLiteral("Default"): result_list_mode}},
+			QVariantList{"Id", tt1_row.value(QStringLiteral("classes.id"))},
+			QVariantList{"Name", tt1_row.value(QStringLiteral("classes.name")) },
+		};
+		if(result_list_mode == QLatin1String("UnorderedNoTimes"))
+			class_el.insert(class_el.count(), QVariantList{"Extensions", QVariantList{"qe:TimePresentation", "false"}});
+		class_result.insert(class_result.count(), class_el);
 		class_result.insert(class_result.count(),
 			QVariantList{"Course",
 				QVariantList{"Length", tt1_row.value(QStringLiteral("courses.length")) },
@@ -2767,11 +2793,15 @@ QString RunsPlugin::export_resultsHtmlStage(bool with_laps)
 			append_list(trr, QVariantList{"td", tt2_row.value(QStringLiteral("competitorName"))});
 			append_list(trr, QVariantList{"td", tt2_row.value(QStringLiteral("registration"))});
 			append_list(trr, QVariantList{"td", tt2_row.value(QStringLiteral("clubs.name"))});
-			append_list(trr, QVariantList{"td", QVariantMap{{"align", "right"}}, quickevent::core::og::TimeMs::fromVariant(tt2_row.value("timeMs")).toString()});
+			const bool no_times = tt2_row.value(QStringLiteral("resultListMode")).toString() == QLatin1String("UnorderedNoTimes");
+			append_list(trr, QVariantList{"td", QVariantMap{{"align", "right"}}, no_times? QString(): quickevent::core::og::TimeMs::fromVariant(tt2_row.value("timeMs")).toString()});
 
 			auto run_status = quickevent::core::RunStatus::fromTreeTableRow(tt2_row);
 			QString loss_str;
-			if (run_status.isOk()) {
+			if (no_times) {
+				loss_str = run_status.isOk()? QString(): run_status.toString();
+			}
+			else if (run_status.isOk()) {
 				loss_str = quickevent::core::og::TimeMs::fromVariant(tt2_row.value("loss")).toString();
 				if(!loss_str.isEmpty())
 					loss_str = "+" + loss_str;
