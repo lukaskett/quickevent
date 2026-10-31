@@ -98,10 +98,6 @@ void stop_file_log()
 void copy_to_clipboard(const QString &text)
 {
 	QGuiApplication::clipboard()->setText(text);
-#ifdef Q_OS_WIN
-	// Qt renders clipboard data lazily, it would be lost if the app crashes again
-	OleFlushClipboard();
-#endif
 }
 
 // New GitHub issue prefilled with app info and as much of the log tail as fits into the URL
